@@ -1,0 +1,12 @@
+# python cache
+__pycache__
+*.pyc
+# running log
+logs.json
+runs
+# model checkpoints
+checkpoint
+checkpoint_bak
+# dataset
+data
+*.png
