@@ -84,9 +84,8 @@ def generate_patches_from_file(isDebug=False):
     
     scales = [1, 0.9, 0.8, 0.7]
     
-    # open 10GB file map
+    # open 16GB file map
     env = lmdb.open(args.src_dir + '/train',map_size=int(1.6*1e10))
-    #ctx = env.begin(write=True)
 
     count = 0
     # generate patches
@@ -101,10 +100,7 @@ def generate_patches_from_file(isDebug=False):
                                (1, gt_img_s.size[0], gt_img_s.size[1]))  # extend one dimension
             noise = np.random.normal(0, args.sigma / 255.0, gt_img_s.shape)
             noise_img_s = np.clip(255 * (gt_img_s.astype(np.float32)/255.0 + noise), 0, 255).astype('uint8')
-            #Image.fromarray(noise_img_s[0]).save('_'+'noisy.png')
-            #Image.fromarray(gt_img_s[0]).save('_'+'gt.png')
 
-            #print(noise_img_s.shape, gt_img_s.shape)
             for j in range(DATA_AUG_TIMES):
                 _, im_h, im_w = noise_img_s.shape
                 for x in range(0 + args.step, im_h - args.pat_size, args.stride):
@@ -127,40 +123,44 @@ def generate_patches_from_file(isDebug=False):
     ctx.commit()
 
 
-
-def generate_patches(isDebug=False):
-    global DATA_AUG_TIMES
+def generate_test_from_file():
     count = 0
-    filepaths = glob.glob(args.src_dir + '/*.PNG')
-    print("number of training data %d" % len(filepaths))
+    filepaths = glob.glob(args.src_dir + '/*.png')
+    print("number of testing data %d" % len(filepaths))
     
-    scales = [1, 0.9, 0.8, 0.7]
-    
-    # data matrix 4-D
-    inputs = np.zeros( (numPatches, args.pat_size, args.pat_size, 1), dtype="uint8")
-    
+    # open 16GB file map
+    env = lmdb.open(args.src_dir + '/test',map_size=int(1.6*1e10))
+
     count = 0
     # generate patches
     for i in range(len(filepaths)):
-        img = Image.open(filepaths[i])
-        for s in range(len(scales)):
-            newsize = (int(img.size[0] * scales[s]), int(img.size[1] * scales[s]))
-            # print newsize
-            img_s = img.resize(newsize, resample=PIL.Image.BICUBIC)
-            img_s = np.reshape(np.array(img_s, dtype="uint8"),
-                               (img_s.size[0], img_s.size[1], 1))  # extend one dimension
-            
-            for j in range(DATA_AUG_TIMES):
-                im_h, im_w, _ = img_s.shape
-                for x in range(0 + args.step, im_h - args.pat_size, args.stride):
-                    for y in range(0 + args.step, im_w - args.pat_size, args.stride):
-                        inputs[count, :, :, :] = data_augmentation(img_s[x:x + args.pat_size, y:y + args.pat_size, :], \
-                                                                   random.randint(0, 7))
-                        count += 1
-    
+        ctx = env.begin(write=True)
+        print("processing %d"%i)
+        gt_img = Image.open(filepaths[i])  # convert RGB to gray
+
+        gt_img = gt_img.resize((256, 256), resample=PIL.Image.BICUBIC)
+        gt_img =  np.reshape(np.array(gt_img, dtype="uint8"),
+                            (1, gt_img.size[0], gt_img.size[1]))  # extend one dimension
+        noise = np.random.normal(0, args.sigma / 255.0, gt_img.shape)
+        noise_img = np.clip(255 * (gt_img.astype(np.float32)/255.0 + noise), 0, 255).astype('uint8')
+
+        shape = np.array(noise_img.shape,dtype=np.int32)
+        #print(noise.shape,shape)
+        shape_suc = ctx.put(bytes("shape"+str(count),encoding='utf8'),shape.tobytes())
+        noise_suc = ctx.put(bytes("noise"+str(count),encoding='utf8'),noise_img.tobytes())
+        clean_suc = ctx.put(bytes("clean"+str(count),encoding='utf8'),gt_img.tobytes())
+        assert shape_suc == noise_suc == clean_suc == True
+        print("finishied patch :%d"%count)
+        count += 1
+        ctx.commit()
+
+    ctx = env.begin(write=True)
+    len_suc = ctx.put(bytes('length',encoding='utf8'),bytes(str(count),encoding='utf8'))
+    assert len_suc == True
+    ctx.commit()
 
 
 if __name__ == '__main__':
-    #generate_patches()
-    generate_patches_list()
-    #generate_patches_from_file()
+    # generate_patches_list()
+    # generate_patches_from_file()
+    generate_test_from_file()

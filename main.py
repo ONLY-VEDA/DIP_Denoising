@@ -27,7 +27,9 @@ parser.add_argument('--train_set', dest='train_set', default='./data/SIDD_Small/
 parser.add_argument('--eval_set', dest='eval_set', default='./data/SIDD_Small/train', help='dataset for eval in training')
 parser.add_argument('--test_set', dest='test_set', default='BSD68', help='dataset for testing')
 args = parser.parse_args()
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+torch.backends.cudnn.benchmark = False
 
 def train():
     if not os.path.exists(args.ckpt_dir):
@@ -36,9 +38,10 @@ def train():
     image_channel = 3
     if args.is_gray:
         image_channel = 1
-    net = DnCNN(in_c=image_channel, out_c=image_channel)
-    #net = IRCNN(in_c=image_channel, out_c=image_channel)
-    #net = resnet50(channel=image_channel)
+    # net = DnCNN(in_c=image_channel, out_c=image_channel)
+    # net = DnCNN_M(in_c=image_channel, out_c=image_channel)
+    net = IRCNN(in_c=image_channel, out_c=image_channel)
+    
     if args.ckpt:
         net.load_state_dict(torch.load(args.ckpt))
 
@@ -96,10 +99,13 @@ def train():
     writer.export_scalars_to_json('./logs.json')
 
 def eval():
+    
     image_channel = 3
     if args.is_gray:
         image_channel = 1
-    net = DnCNN(in_c=image_channel, out_c=image_channel)
+    # net = DnCNN(in_c=image_channel, out_c=image_channel)
+    net = DnCNN_M(in_c=image_channel, out_c=image_channel)
+    # net = IRCNN(in_c=image_channel, out_c=image_channel)
     print(net)
 
     net.load_state_dict(torch.load(args.ckpt, map_location='cuda:0'))
@@ -114,6 +120,8 @@ def eval():
 
     cnt = 0
     sum_psnr = 0
+
+    start_time = time.time()
     for i, data in enumerate(dataloader, 0):
         inputs, labels = data['noise'],data['clean']
 
@@ -121,11 +129,6 @@ def eval():
         labels = labels.to(device)
 
         outputs = net(inputs)
-    
-        #groundtruth = np.clip(255 * labels.numpy(), 0, 255).astype('uint8')
-        #noisyimage = np.clip(255 * inputs.numpy(), 0, 255).astype('uint8')
-        #outputimage = np.clip(255 * outputs.numpy(), 0, 255).astype('uint8')
-        #psnr = cal_psnr(groundtruth, outputimage)
             
         groundtruth = torch.clamp(255 * labels, 0, 255)
         noisyimage = torch.clamp(255 * inputs, 0, 255)
@@ -135,16 +138,17 @@ def eval():
         print("batch %d predict PSNR: %.2f" % (i, psnr_pred))
         cnt += 1
         sum_psnr += psnr_pred.detach().cpu().numpy()
+    print("average time: %.4f" % ((time.time() - start_time)/ cnt))
     print("average psnr: %.2f" % (sum_psnr/cnt ))
 
 def inference():
     image_channel = 3
     if args.is_gray:
         image_channel = 1
-    net = DnCNN(in_c=image_channel, out_c=image_channel)
-
-    #net = IRCNN(in_c=3, out_c=3)
-    #net = resnet50()
+    # net = DnCNN(in_c=image_channel, out_c=image_channel)
+    # net = DnCNN_M(in_c=image_channel, out_c=image_channel)
+    net = IRCNN(in_c=image_channel, out_c=image_channel)
+    
     print(net)
 
     net.load_state_dict(torch.load(args.ckpt, map_location='cuda:0'))
